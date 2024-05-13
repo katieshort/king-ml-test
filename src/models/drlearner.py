@@ -5,9 +5,6 @@ utilities to construct customized model pipelines and manage the lifecycle of
 causal inference models from training through evaluation to prediction.
 
 Features include:
-- A factory function, `create_model_pipeline`, that constructs preprocessing
-  and modeling pipelines based on specified configurations such as polynomial
-  feature creation, categorical encoding, scaling, and target transformations.
 - The `DoubleRobustLearner` class, which encapsulates training, evaluation,
   and prediction processes using doubly robust methods to estimate causal effects
   comparing binary treatment variable.
@@ -416,69 +413,3 @@ class DoubleRobustLearner:
         self.final_model = joblib.load(model_path)
         if self.verbose:
             logging.info(f"Model loaded from {model_path}")
-
-    # def evaluate_balance(self, X, T, prop_scores):
-    #     """
-    #     Evaluate the balance of covariates between treated and control groups using SMD.
-    #     """
-    #     # Create a DataFrame for balance checking
-    #     df = X.copy()
-    #     df["treatment"] = T
-    #     df["propensity_score"] = prop_scores
-    #
-    #     # Assuming binary treatment coded as 0 or 1
-    #     treated = df[df["treatment"] == 1]
-    #     control = df[df["treatment"] == 0]
-    #
-    #     # Calculate SMD for each covariate in X
-    #     smd_results = calculate_smd(treated, control, list(X.columns))
-    #     if self.verbose:
-    #         logging.info("Standardized Mean Differences (SMD) for balance checking:")
-    #         for covariate, smd in smd_results.items():
-    #             logging.info(f"{covariate}: {smd}")
-    #
-    #     return smd_results
-
-    def calculate_smd_weighted(treated, control, covariate_cols):
-        """Calculate the Standardized Mean Differences (SMD) for weighted data."""
-        smd_list = {}
-        for col in covariate_cols:
-            treated_mean = np.average(treated[col], weights=treated["weights"])
-            control_mean = np.average(control[col], weights=control["weights"])
-            pooled_var = np.sqrt(
-                np.average(
-                    (treated[col] - treated_mean) ** 2, weights=treated["weights"]
-                )
-                + np.average(
-                    (control[col] - control_mean) ** 2, weights=control["weights"]
-                )
-            )
-            smd = np.abs(treated_mean - control_mean) / pooled_var
-            smd_list[col] = smd
-        return smd_list
-
-    def evaluate_balance(self, X, T, prop_scores):
-        """Evaluate the balance of covariates using weighted SMD."""
-        df = X.copy()
-        df["treatment"] = T
-        df["propensity_score"] = prop_scores
-        df["weights"] = df.apply(
-            lambda x: (
-                1 / x["propensity_score"]
-                if x["treatment"] == 1
-                else 1 / (1 - x["propensity_score"])
-            ),
-            axis=1,
-        )
-
-        treated = df[df["treatment"] == 1]
-        control = df[df["treatment"] == 0]
-        smd_results = calculate_smd_weighted(treated, control, list(X.columns))
-        if self.verbose:
-            logging.info(
-                "Weighted Standardized Mean Differences (SMD) for balance checking:"
-            )
-            for covariate, smd in smd_results.items():
-                logging.info(f"{covariate}: {smd}")
-
-        return smd_results
