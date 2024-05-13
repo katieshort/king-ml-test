@@ -26,9 +26,6 @@ RUN poetry install --without dev --no-root && rm -rf $POETRY_CACHE_DIR
 # Copy the rest of your application code
 COPY . .
 
-# Run poetry install if your project needs to be installed
-#RUN poetry install --without dev
-
 # Make port 5000 available to the world outside this container
 EXPOSE 5000
 
