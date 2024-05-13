@@ -80,8 +80,8 @@ To install and run the project, execute the following steps:
 
 ```bash
 # Clone the repository
-git clone [Your-Repository-URL]
-cd [Repository-Name]
+git clone git clone https://github.com/katieshort/king-ml-test.git
+cd king-ml-test
 
 # Install dependencies using poetry
 poetry install
