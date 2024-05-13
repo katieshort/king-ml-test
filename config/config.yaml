@@ -1,0 +1,65 @@
+file_paths:
+  data_path: "data/toydata_mltest.csv"
+  model_path:
+    engagement: "models/DR_engagement.pkl"
+    monetization: "models/DR_monetization.pkl"
+
+preprocessing:
+  drop_columns: [ "n9" ]
+  engagement_features: { "n1": 30, # to be normalized
+                         "n13": 7 }
+  filter_negative_engagement : True  # assume inactive during pre/post test
+  remove_inf_n10: False
+  cap_outliers: True
+
+features:
+  engagement:
+    X: [ "n1_daily" ] # heterogeneous treatment effect
+    W: [ "c1", "c2", "c3", "c4", "c5", "n6", "n7", "n11" ]
+    T: "player_group"
+    Y: "n13_daily"
+    # Features to be transformed in pipeline
+    categorical: [ "c1", "c2", "c3", "c4", "c5" ] # target encoded
+    numerical: [ "n1_daily", "n6", "n7", "n11" ]
+
+  monetization:
+    X: [ "n1_daily"] # heterogeneous features, assuming n11 is related to pre-test monetization
+    W: [ "c1", "c2", "c3", "c4", "c5", "n6", "n7", "n11"]
+    T: "player_group"
+    Y: "n14_capped"
+    # Features to be transformed in pipeline
+    categorical: [ "c1", "c2", "c3", "c4", "c5" ] # target encoded
+    numerical: [ "n1_daily", "n6", "n7", "n11" ]
+
+models:
+  engagement:
+    propensity_model:
+      type: "sklearn.linear_model.LogisticRegression"
+      params: { }
+    outcome_model:
+      type: "sklearn.linear_model.LinearRegression"
+      params: { }
+      transform_target: False
+#      log_transform: [ "n11" ]
+#      poly_features: [ "n1_daily", "treatment" ]
+    final_model:
+      type: "sklearn.linear_model.LinearRegression"
+      params: { }
+      poly: False
+
+  monetization:
+    propensity_model:
+      type: "sklearn.linear_model.LogisticRegression"
+      params: { }
+    outcome_model:
+      type: "sklearn.linear_model.LinearRegression"
+      params: { }
+      transform_target: True
+#      log_transform: [ "n11" ]
+    #      poly_features: ["n1_daily", "treatment"]
+    final_model:
+      type: "sklearn.linear_model.LinearRegression"
+      params: { }
+      poly: False
+#      log_transform: [ "n11" ]
+

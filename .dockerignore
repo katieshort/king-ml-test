@@ -1,0 +1,10 @@
+__pycache__
+.git
+.gitignore
+.venv
+*.log
+tests/
+notebooks/
+data/
+reports/
+docs/

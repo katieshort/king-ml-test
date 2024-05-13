@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment settings
+.env
+
+# Virtual environment
+.venv/
+venv/
+
+# PyCharm and VSCode settings
+.idea/
+.vscode/
+
+# OS system files
+.DS_Store
+Thumbs.db
+
+# Distribution / packaging
+/dist/
+/build/
+*.egg-info/
+*.egg
+
+# Poetry files
+/poetry.lock
+
+# Logs
+*.log
+
+# Data directory (uncomment if you prefer not to include it in version control)
+# /data/
