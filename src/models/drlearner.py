@@ -22,6 +22,7 @@ from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, Stratified
 from src.pipelines.pipeline_utils import create_model_pipeline
 from typing import Callable, Dict, Tuple, Any, Optional, List
 from src.utils.utils import calculate_smd, log_metrics
+import importlib
 
 # Configure logging
 logging.basicConfig(
@@ -51,64 +52,84 @@ class DoubleRobustLearner:
         Initializes the DoubleRobustLearner with specified model constructors.
 
         Parameters:
-            propensity_model_ctor (Callable): Constructor for propensity model.
-            outcome_model_ctor (Callable): Constructor for outcome model.
-            final_model_ctor (Callable): Constructor for the final model.
-            final_model_params (dict, optional): Parameters for the final model.
+            config (dict): Configuration settings for models and features.
+            model_type (str): Specifies the type of model configuration to use ('engagement' or 'monetization').
             min_propensity (float): Minimum clipping value for propensity scores.
-            cv_folds (int): Number of cross-validation folds.
+            cv_folds (int): Number of cross-validation folds for training nuisance models.
+            verbose (bool): Enables detailed logging during model operations if set to True.
         """
         self.config = config
-        self.model_type = model_type  # 'engagement' or 'monetization'
-        # self.propensity_params = config["models"][self.model_type]["propensity_model"][
-        #     "params"
-        # ]
-        # self.outcome_params = config["models"][self.model_type]["outcome_model"][
-        #     "params"
-        # ]
+        self.model_type = model_type
         self.propensity_params = None
         self.outcome_params = None
         self.min_propensity = min_propensity
         self.cv_folds = cv_folds
         self.verbose = verbose
         self.initialize_models()
-        # To store additional information for evaluation
+
+        # Initializes storage for model details such as fitted models and their evaluation metrics
         self.model_details = {
             "propensity": {"models": [], "roc_auc": []},
             "outcome": {"models": [], "mse": [], "r2": []},
             "dr": {"mse_treated": [], "mse_control": []},
         }
 
+    def get_model_constructor(self, path):
+        """
+        Dynamically import a model constructor based on its path in the configuration.
+
+        Args:
+            path (str): Dot path of the model constructor e.g., 'sklearn.linear_model.LogisticRegression'
+
+        Returns:
+            constructor: The model constructor from the specified path.
+        """
+        module_path, class_name = path.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        return getattr(module, class_name)
+
     def initialize_models(self) -> None:
-        """Initialize the model constructors based on configuration."""
+        """Initialize the model constructors for the propensity, outcome, and final models based on configuration."""
         if self.verbose:
             logging.info("Initializing models...")
 
         models_config = self.config["models"][self.model_type]
 
+        PropensityModel = self.get_model_constructor(
+            models_config["propensity_model"]["type"]
+        )
+        OutcomeModel = self.get_model_constructor(
+            models_config["outcome_model"]["type"]
+        )
+        FinalModel = self.get_model_constructor(models_config["final_model"]["type"])
+
         self.propensity_model_ctor = create_model_pipeline(
-            LogisticRegression,
+            PropensityModel,
+            models_config["propensity_model"].get("params", {}),
             self.config["features"][self.model_type]["categorical"],
             self.config["features"][self.model_type]["numerical"],
         )
 
         self.outcome_model_ctor = create_model_pipeline(
-            model_constructor=RandomForestRegressor,
-            categorical_features=self.config["features"][self.model_type][
+            OutcomeModel,
+            models_config["outcome_model"].get("params", {}),
+            self.config["features"][self.model_type][
                 "categorical"
             ],
-            numerical_features=self.config["features"][self.model_type]["numerical"],
-            transform_target=models_config["outcome_model"].get(
+            self.config["features"][self.model_type]["numerical"],
+            models_config["outcome_model"].get(
                 "transform_target", False
             ),
-            poly_features=models_config["outcome_model"].get("poly_features", []),
-            log_transform=models_config["outcome_model"].get("log_transform", []),
+            models_config["outcome_model"].get("poly_features", []),
+            models_config["outcome_model"].get("log_transform", []),
         )
+
         self.final_model_ctor = create_model_pipeline(
-            LinearRegression,
+            FinalModel,
+            models_config["final_model"].get("params", {}),
             [],
             [],
-            poly_features=models_config["final_model"].get("poly_features", []),
+            models_config["final_model"].get("poly_features", []),
         )
 
     def prepare_data(
@@ -197,8 +218,7 @@ class DoubleRobustLearner:
                 r2_score(Y_test, outcome_predictions)
             )
 
-            # TODO: remove if dont use
-            # Calculate doubly robust estimates
+            # Calculate doubly robust estimates and check MSE against known outcomes
             Y_DR_treated, Y_DR_control = self.doubly_robust_estimation(
                 Y_test,
                 T_test,

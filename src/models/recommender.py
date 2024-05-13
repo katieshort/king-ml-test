@@ -27,7 +27,7 @@ class GameDesignRecommender:
         self.config = config
         self.model_engagement = None
         self.model_monetization = None
-        self.preprocessor = DataLoader(config)
+        self.preprocessor = DataLoader(config, train=False)
         self.load_model()
 
     def load_model(self) -> None:
@@ -63,7 +63,7 @@ class GameDesignRecommender:
         Default to 'A' if any issues occur.
         """
         try:
-            df = self.preprocessor.preprocess_data(df, train=False)
+            df = self.preprocessor.preprocess_data(df)
 
             # Validate the processed data
             if not self.validate_data(df):

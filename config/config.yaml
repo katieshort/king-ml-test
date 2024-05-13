@@ -37,7 +37,7 @@ models:
       type: "sklearn.linear_model.LogisticRegression"
       params: { }
     outcome_model:
-      type: "sklearn.linear_model.LinearRegression"
+      type: "sklearn.ensemble.RandomForestRegressor"
       params: { }
       transform_target: False
 #      log_transform: [ "n11" ]
@@ -52,7 +52,7 @@ models:
       type: "sklearn.linear_model.LogisticRegression"
       params: { }
     outcome_model:
-      type: "sklearn.linear_model.LinearRegression"
+      type: "sklearn.ensemble.RandomForestRegressor"
       params: { }
       transform_target: True
 #      log_transform: [ "n11" ]

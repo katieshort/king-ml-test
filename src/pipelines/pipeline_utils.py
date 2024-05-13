@@ -6,14 +6,13 @@ from sklearn.preprocessing import (
     StandardScaler,
     PolynomialFeatures,
 )
-from sklearn.base import BaseEstimator, TransformerMixin
 from category_encoders import TargetEncoder
 import numpy as np
-import pandas as pd
 from typing import Callable, Dict, Tuple, Any, Optional, List
 
 def create_model_pipeline(
     model_constructor: Callable,
+    params: dict,
     categorical_features: list,
     numerical_features: list,
     transform_target: bool = False,
@@ -25,18 +24,17 @@ def create_model_pipeline(
     """Factory function to create and return a pipeline constructor function."""
 
     def build_pipeline():
-        # Individual transformers applied directly within ColumnTransformer
         transformers = []
 
         # Adding a simple imputer for all numerical features
         transformers.append(("imputer", SimpleImputer(strategy="mean"), numerical_features))
 
-        # Apply log transformation directly if specified
+        # Apply log transformation if specified
         if log_transform:
             log_transformer = FunctionTransformer(np.log1p, validate=False)
             transformers.append(("log_transform", log_transformer, log_transform))
 
-        # Apply polynomial features directly if specified
+        # Apply polynomial features if specified
         if poly_features:
             poly_transformer = PolynomialFeatures(degree=2, include_bias=False)
             transformers.append(("poly_transform", poly_transformer, poly_features))
@@ -59,11 +57,11 @@ def create_model_pipeline(
 
         # Configure the model, with optional target transformation
         model = (TransformedTargetRegressor(
-                    regressor=model_constructor(),
+                    regressor=model_constructor(**params),
                     func=np.log1p,
                     inverse_func=np.expm1)
                  if transform_target
-                 else model_constructor())
+                 else model_constructor(**params))
 
         # The final pipeline including preprocessing and the model itself
         return Pipeline([
