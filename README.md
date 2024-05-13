@@ -14,10 +14,8 @@ and to develop a personalized recommendation system for game design based on pre
    engagement and monetization.
 2. **Personalized Design Recommendation**: Develop a predictive model to recommend a game design for each player that
    maximizes future monetization while maintaining or enhancing engagement.
-3. **Performance Reporting**: Analyze and report the model performance to ensure the reliability and efficacy of the
-   predictive recommendations.
-4. **API Implementation**: Develop a locally runnable API that serves predictions from the trained model, with a focus
-   on cloud readiness and containerization.
+3. **Performance Reporting**: Analyze and report the model performance to justify selection of approach and model.
+4. **API Implementation**: Develop a locally runnable API that serves predictions from the trained model, containerized with Docker for cloud readiness.
 
 ## Methodology
 
