@@ -10,19 +10,19 @@ Features include:
   comparing binary treatment variable.
 """
 
+import importlib
+import logging
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import joblib
 import numpy as np
 import pandas as pd
-import joblib
-import logging
-from sklearn.base import BaseEstimator
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression, LogisticRegression, HuberRegressor
 from sklearn.metrics import mean_squared_error, r2_score, roc_auc_score
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, StratifiedKFold
+from sklearn.pipeline import Pipeline
+
 from src.pipelines.pipeline_utils import create_model_pipeline
-from typing import Callable, Dict, Tuple, Any, Optional, List
-from src.utils.utils import calculate_smd, log_metrics
-import importlib
+from src.utils.utils import log_metrics
 
 # Configure logging
 logging.basicConfig(
@@ -113,13 +113,9 @@ class DoubleRobustLearner:
         self.outcome_model_ctor = create_model_pipeline(
             OutcomeModel,
             models_config["outcome_model"].get("params", {}),
-            self.config["features"][self.model_type][
-                "categorical"
-            ],
+            self.config["features"][self.model_type]["categorical"],
             self.config["features"][self.model_type]["numerical"],
-            models_config["outcome_model"].get(
-                "transform_target", False
-            ),
+            models_config["outcome_model"].get("transform_target", False),
             models_config["outcome_model"].get("poly_features", []),
             models_config["outcome_model"].get("log_transform", []),
         )
@@ -175,71 +171,23 @@ class DoubleRobustLearner:
         outcome_preds_control = np.zeros(Y.shape)
 
         for train_index, test_index in kf.split(X, T):
-            X_train, X_test = X.iloc[train_index], X.iloc[test_index]
-            T_train, T_test = T.iloc[train_index], T.iloc[test_index]
-            Y_train, Y_test = Y.iloc[train_index], Y.iloc[test_index]
-
-            # Train and predict propensity scores
-            propensity_model = self.train_model(
-                self.propensity_model_ctor, self.propensity_params, X_train, T_train
-            )
-            prop_scores[test_index] = propensity_model.predict_proba(X_test)[:, 1]
-            prop_scores[test_index] = np.clip(
-                prop_scores[test_index], self.min_propensity, 1 - self.min_propensity
-            )
-            self.model_details["propensity"]["models"].append(propensity_model)
-            self.model_details["propensity"]["roc_auc"].append(
-                roc_auc_score(T_test, prop_scores[test_index])
+            self._fit_nuisance_models(
+                X.iloc[train_index],
+                X.iloc[test_index],
+                T.iloc[train_index],
+                T.iloc[test_index],
+                Y.iloc[train_index],
+                Y.iloc[test_index],
+                prop_scores,
+                outcome_preds_treated,
+                outcome_preds_control,
+                test_index,
             )
 
-            outcome_model = self.train_model(
-                self.outcome_model_ctor,
-                self.outcome_params,
-                X_train.assign(
-                    treatment=T_train
-                ),  # include treatment variable as a feature
-                Y_train,
-            )
-            # Predict outcomes using actual treatment indicators
-            outcome_predictions = outcome_model.predict(X_test.assign(treatment=T_test))
-            # Predict under treatment assumption
-            outcome_preds_treated[test_index] = outcome_model.predict(
-                X_test.assign(treatment=1)
-            )
-            # Predict under control assumption
-            outcome_preds_control[test_index] = outcome_model.predict(
-                X_test.assign(treatment=0)
-            )
-            self.model_details["outcome"]["models"].append(outcome_model)
-            self.model_details["outcome"]["mse"].append(
-                mean_squared_error(Y_test, outcome_predictions)
-            )
-            self.model_details["outcome"]["r2"].append(
-                r2_score(Y_test, outcome_predictions)
-            )
-
-            # Calculate doubly robust estimates and check MSE against known outcomes
-            Y_DR_treated, Y_DR_control = self.doubly_robust_estimation(
-                Y_test,
-                T_test,
-                prop_scores[test_index],
-                outcome_preds_treated[test_index],
-                outcome_preds_control[test_index],
-            )
-            # Calculate MSE for the treated group
-            treated_indices = T_test == 1
-            if np.any(treated_indices):  # Ensure there are treated samples in the fold
-                mse_treated = mean_squared_error(
-                    Y_test[treated_indices], Y_DR_treated[treated_indices]
-                )
-                self.model_details["dr"]["mse_treated"].append(mse_treated)
-            # Calculate MSE for the control group
-            control_indices = T_test == 0
-            if np.any(control_indices):  # Ensure there are control samples in the fold
-                mse_control = mean_squared_error(
-                    Y_test[control_indices], Y_DR_control[control_indices]
-                )
-                self.model_details["dr"]["mse_control"].append(mse_control)
+        # Store propensity scores for later validation
+        self.propensity_scores_df = pd.DataFrame(
+            {"index": T.index, "propensity_score": prop_scores, "treatment": T}
+        ).set_index("index")
 
         if self.verbose:
             # Log the metrics after all folds are processed
@@ -253,13 +201,137 @@ class DoubleRobustLearner:
 
         return prop_scores, outcome_preds_treated, outcome_preds_control
 
+    def _fit_nuisance_models(
+        self,
+        X_train: pd.DataFrame,
+        X_test: pd.DataFrame,
+        T_train: pd.Series,
+        T_test: pd.Series,
+        Y_train: pd.Series,
+        Y_test: pd.Series,
+        prop_scores: np.ndarray,
+        outcome_preds_treated: np.ndarray,
+        outcome_preds_control: np.ndarray,
+        test_index: np.ndarray,
+    ) -> None:
+        """
+        Fit nuisance models (propensity and outcome models) for a cross-validation fold.
+
+        Args:
+            X_train (pd.DataFrame): Training feature matrix.
+            X_test (pd.DataFrame): Test feature matrix.
+            T_train (pd.Series): Training treatment vector.
+            T_test (pd.Series): Test treatment vector.
+            Y_train (pd.Series): Training outcome vector.
+            Y_test (pd.Series): Test outcome vector.
+            prop_scores (np.ndarray): Array to store propensity scores.
+            outcome_preds_treated (np.ndarray): Array to store outcome predictions for treated.
+            outcome_preds_control (np.ndarray): Array to store outcome predictions for control.
+            test_index (np.ndarray): Test indices for the current fold.
+        """
+
+        propensity_model = self.train_model(
+            self.propensity_model_ctor, self.propensity_params, X_train, T_train
+        )
+        prop_scores[test_index] = self._predict_propensity(propensity_model, X_test)
+        self._update_propensity_details(
+            propensity_model, T_test, prop_scores[test_index]
+        )
+
+        outcome_model = self.train_model(
+            self.outcome_model_ctor,
+            self.outcome_params,
+            X_train.assign(treatment=T_train),  # include treatment as a feature
+            Y_train,
+        )
+        outcome_preds_treated[test_index], outcome_preds_control[test_index] = (
+            self._predict_outcomes(outcome_model, X_test)
+        )
+        self._update_outcome_details(outcome_model, Y_test, X_test, T_test)
+
+        self._evaluate_and_update_dr_metrics(
+            Y_test,
+            T_test,
+            prop_scores[test_index],
+            outcome_preds_treated[test_index],
+            outcome_preds_control[test_index],
+        )
+
+    def _predict_propensity(self, model: Pipeline, X_test: pd.DataFrame) -> np.ndarray:
+        """Predict propensity scores and clip them."""
+        prop_scores = model.predict_proba(X_test)[:, 1]
+        return np.clip(prop_scores, self.min_propensity, 1 - self.min_propensity)
+
+    def _update_propensity_details(
+        self, model: Pipeline, T_test: pd.Series, prop_scores: np.ndarray
+    ):
+        """Update propensity model details."""
+        self.model_details["propensity"]["models"].append(model)
+        self.model_details["propensity"]["roc_auc"].append(
+            roc_auc_score(T_test, prop_scores)
+        )
+
+    def _predict_outcomes(
+        self, model: Pipeline, X_test: pd.DataFrame
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Predict outcomes under treatment and control assumptions."""
+        outcome_preds_treated = model.predict(X_test.assign(treatment=1))
+        outcome_preds_control = model.predict(X_test.assign(treatment=0))
+        return outcome_preds_treated, outcome_preds_control
+
+    def _update_outcome_details(
+        self,
+        model: Pipeline,
+        Y_test: pd.Series,
+        X_test: pd.DataFrame,
+        T_test: pd.Series,
+    ):
+        """Update outcome model details."""
+        # Predict outcomes with actual treatment indicators
+        outcome_predictions = model.predict(X_test.assign(treatment=T_test))
+        self.model_details["outcome"]["models"].append(model)
+        self.model_details["outcome"]["mse"].append(
+            mean_squared_error(Y_test, outcome_predictions)
+        )
+        self.model_details["outcome"]["r2"].append(
+            r2_score(Y_test, outcome_predictions)
+        )
+
+    def _evaluate_and_update_dr_metrics(
+        self,
+        Y_test: pd.Series,
+        T_test: pd.Series,
+        prop_scores: np.ndarray,
+        outcome_preds_treated: np.ndarray,
+        outcome_preds_control: np.ndarray,
+    ) -> None:
+        """Evaluate doubly robust estimates and update model details."""
+        Y_DR_treated, Y_DR_control = self.doubly_robust_estimation(
+            Y_test, T_test, prop_scores, outcome_preds_treated, outcome_preds_control
+        )
+
+        treated_indices = T_test == 1
+        control_indices = T_test == 0
+
+        if np.any(treated_indices):
+            mse_treated = mean_squared_error(
+                Y_test[treated_indices], Y_DR_treated[treated_indices]
+            )
+            self.model_details["dr"]["mse_treated"].append(mse_treated)
+
+        if np.any(control_indices):
+            mse_control = mean_squared_error(
+                Y_test[control_indices], Y_DR_control[control_indices]
+            )
+            self.model_details["dr"]["mse_control"].append(mse_control)
+
     def train_model(
         self,
         model_pipeline: Callable,
         params: Optional[Dict],
         X_train: pd.DataFrame,
         Y_train: pd.Series,
-    ) -> BaseEstimator:
+    ) -> Pipeline:
         """
         Trains a model or a pipeline based on provided constructor and parameters.
 
@@ -270,7 +342,7 @@ class DoubleRobustLearner:
             Y_train (pd.Series): Training target.
 
         Returns:
-            BaseEstimator: Trained model or pipeline.
+            Pipeline: Trained model pipeline.
         """
 
         model = model_pipeline()
@@ -286,37 +358,38 @@ class DoubleRobustLearner:
         Returns:
             Dict[str, Dict[str, float]]: Summary statistics for propensity and outcome models.
         """
-
-        propensity_roc_auc_mean = np.mean(self.model_details["propensity"]["roc_auc"])
-        propensity_roc_auc_std = np.std(self.model_details["propensity"]["roc_auc"])
-
-        outcome_mse_mean = np.mean(self.model_details["outcome"]["mse"])
-        outcome_mse_std = np.std(self.model_details["outcome"]["mse"])
-        outcome_r2_mean = np.mean(self.model_details["outcome"]["r2"])
-        outcome_r2_std = np.std(self.model_details["outcome"]["r2"])
+        propensity_metrics = self._calculate_metrics(
+            self.model_details["propensity"]["roc_auc"]
+        )
+        outcome_mse_metrics = self._calculate_metrics(
+            self.model_details["outcome"]["mse"]
+        )
+        outcome_r2_metrics = self._calculate_metrics(
+            self.model_details["outcome"]["r2"]
+        )
 
         metrics = {
             "propensity": {
-                "roc_auc": {
-                    "mean": propensity_roc_auc_mean,
-                    "std": propensity_roc_auc_std,
-                },
+                "roc_auc": propensity_metrics,
             },
             "outcome": {
-                "mse": {
-                    "mean": outcome_mse_mean,
-                    "std": outcome_mse_std,
-                },
-                "r2": {
-                    "mean": outcome_r2_mean,
-                    "std": outcome_r2_std,
-                },
+                "mse": outcome_mse_metrics,
+                "r2": outcome_r2_metrics,
             },
         }
 
-        # Log using utility
-        log_metrics(metrics)
+        if self.verbose:
+            # Log using utility
+            log_metrics(metrics)
+
         return metrics
+
+    def _calculate_metrics(self, values: List[float]) -> Dict[str, float]:
+        """Calculate mean and standard deviation for a list of values."""
+        return {
+            "mean": np.mean(values),
+            "std": np.std(values),
+        }
 
     def doubly_robust_estimation(
         self,
@@ -413,8 +486,13 @@ class DoubleRobustLearner:
                 "intercept": final_estimator.intercept_,
                 "coefficients": final_estimator.coef_,
             }
-        else:
-            return {"error": "Model details not available."}
+        return {"error": "Model details not available."}
+
+    def get_propensity_scores_df(self) -> pd.DataFrame:
+        """
+        Retrieve the propensity scores DataFrame after training.
+        """
+        return self.propensity_scores_df
 
     def save_model(self) -> None:
         """
