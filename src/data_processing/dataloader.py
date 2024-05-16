@@ -9,10 +9,11 @@ Classes:
     DataLoader: Loads and preprocesses data from configured sources.
 """
 
-import pandas as pd
-import numpy as np
 import logging
-from typing import Tuple, List, Any, Dict
+from typing import Dict
+
+import numpy as np
+import pandas as pd
 
 # Configure logging
 logging.basicConfig(
@@ -56,13 +57,12 @@ class DataLoader:
         try:
             df = pd.read_csv(self.config.get("file_paths", {}).get("data_path"))
             logging.info(
-                "Data loaded successfully from {}".format(
-                    self.config["file_paths"]["data_path"]
-                )
+                "Data loaded successfully from %s",
+                self.config["file_paths"]["data_path"],
             )
             return df
         except Exception as e:
-            logging.error("Failed to load data: {}".format(e))
+            logging.error("Failed to load data: %s", e)
             raise
 
     def preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:

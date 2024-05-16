@@ -1,14 +1,25 @@
+"""
+This module provides a factory function for configuring and constructing machine learning pipelines.
+
+The `create_model_pipeline` function returns a constructor function that, when called, builds a
+comprehensive sklearn pipeline integrating preprocessing and modeling steps. This setup is designed
+to facilitate the easy configuration and instantiation of pipelines with variable preprocessing
+options tailored to different modeling needs.
+"""
+
+from typing import Callable, List, Optional
+
+import numpy as np
+from category_encoders import TargetEncoder
 from sklearn.compose import ColumnTransformer, TransformedTargetRegressor
-from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import (
     FunctionTransformer,
-    StandardScaler,
     PolynomialFeatures,
+    StandardScaler,
 )
-from category_encoders import TargetEncoder
-import numpy as np
-from typing import Callable, Dict, Tuple, Any, Optional, List
+
 
 def create_model_pipeline(
     model_constructor: Callable,
@@ -20,14 +31,15 @@ def create_model_pipeline(
     scale: bool = False,
     log_transform: Optional[List[str]] = None,
 ) -> Callable:
-
     """Factory function to create and return a pipeline constructor function."""
 
     def build_pipeline():
         transformers = []
 
         # Adding a simple imputer for all numerical features
-        transformers.append(("imputer", SimpleImputer(strategy="mean"), numerical_features))
+        transformers.append(
+            ("imputer", SimpleImputer(strategy="mean"), numerical_features)
+        )
 
         # Apply log transformation if specified
         if log_transform:
@@ -46,27 +58,29 @@ def create_model_pipeline(
 
         # Categorical features encoding
         if categorical_features:
-            cat_transformer = TargetEncoder(smoothing=1.0, handle_missing="value")
-            transformers.append(("cat_transform", cat_transformer, categorical_features))
+            cat_transformer = TargetEncoder(smoothing=2.0, handle_missing="value")
+            transformers.append(
+                ("cat_transform", cat_transformer, categorical_features)
+            )
 
         # Combine all transformations
         preprocessor = ColumnTransformer(
             transformers=transformers,
-            remainder="passthrough"  # keep all other features unchanged
+            remainder="passthrough",  # keep all other features unchanged
         )
 
         # Configure the model, with optional target transformation
-        model = (TransformedTargetRegressor(
-                    regressor=model_constructor(**params),
-                    func=np.log1p,
-                    inverse_func=np.expm1)
-                 if transform_target
-                 else model_constructor(**params))
+        model = (
+            TransformedTargetRegressor(
+                regressor=model_constructor(**params),
+                func=np.log1p,
+                inverse_func=np.expm1,
+            )
+            if transform_target
+            else model_constructor(**params)
+        )
 
         # The final pipeline including preprocessing and the model itself
-        return Pipeline([
-            ("preprocessor", preprocessor),
-            ("model", model)
-        ])
+        return Pipeline([("preprocessor", preprocessor), ("model", model)])
 
     return build_pipeline

@@ -1,7 +1,8 @@
-import yaml
-import numpy as np
-from prettytable import PrettyTable
 import logging
+
+import numpy as np
+import yaml
+from prettytable import PrettyTable
 
 
 def load_config(path: str):
@@ -43,3 +44,20 @@ def log_metrics(details):
 
     # Log the table as an info message
     logging.info("\n" + str(table))
+
+
+def check_common_support(prop_scores, treatment):
+    min_treated, max_treated = (
+        prop_scores[treatment == 1].min(),
+        prop_scores[treatment == 1].max(),
+    )
+    min_control, max_control = (
+        prop_scores[treatment == 0].min(),
+        prop_scores[treatment == 0].max(),
+    )
+
+    print(f"Treated group: min={min_treated}, max={max_treated}")
+    print(f"Control group: min={min_control}, max={max_control}")
+    common_support = (max_treated >= min_control) and (max_control >= min_treated)
+    print(f"Common Support: {common_support}")
+    return common_support

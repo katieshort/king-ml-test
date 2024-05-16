@@ -38,6 +38,7 @@ def plot_design_distribution(df, save_path=None):
         plt.savefig(save_path)
     plt.show()
 
+
 def overlay_design_distributions(df, save_path=None):
     # Prepare the plot
     plt.figure(figsize=(10, 6))
@@ -104,6 +105,7 @@ def overlay_design_distributions(df, save_path=None):
         plt.savefig(save_path)
     plt.show()
 
+
 def plot_distributions_per_group(df):
 
     for group in ["A", "B"]:
@@ -114,6 +116,67 @@ def plot_distributions_per_group(df):
         )
         plt.title(f"Design Distribution for Group {group}")
         plt.show()
+
+
+def plot_propensity_scores(prop_scores, treatment):
+    # Normalize by the number of observations in each group
+    n_treated = (treatment == 1).sum()
+    n_control = (treatment == 0).sum()
+
+    plt.figure(figsize=(10, 6))
+    plt.hist(
+        prop_scores[treatment == 1],
+        bins=100,
+        alpha=0.5,
+        label="Design B",
+        density=False,
+        weights=np.ones(n_treated) / n_treated,
+    )
+    plt.hist(
+        prop_scores[treatment == 0],
+        bins=100,
+        alpha=0.5,
+        label="Design A",
+        density=False,
+        weights=np.ones(n_control) / n_control,
+    )
+    plt.xlabel("Propensity Score")
+    plt.ylabel("Frequency")
+    plt.legend(loc="best")
+    plt.title("Distribution of Propensity Scores")
+    plt.show()
+
+
+def plot_propensity_histograms(prop_scores_df):
+    plt.figure(figsize=(10, 6))
+    sns.histplot(
+        data=prop_scores_df,
+        x="propensity_score",
+        hue="treatment",
+        bins=60,
+        kde=False,
+        element="step",
+        stat="density",
+        common_norm=True,
+    )
+    plt.xlabel("Propensity Score")
+    plt.ylabel("Density")
+    plt.legend()
+    plt.title("Distribution of Propensity Scores")
+    plt.show()
+
+
+def plot_density_propensity_scores(prop_scores, treatment):
+    plt.figure(figsize=(10, 6))
+    sns.kdeplot(prop_scores[treatment == 1], fill=True, color="blue", label="Design B")
+    sns.kdeplot(
+        prop_scores[treatment == 0], fill=True, color="orange", label="Design A"
+    )
+    plt.xlabel("Propensity Score")
+    plt.ylabel("Density")
+    plt.legend(loc="best")
+    plt.title("Density Plot of Propensity Scores")
+    plt.show()
 
 
 def compare_design_distributions(df):

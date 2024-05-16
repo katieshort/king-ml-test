@@ -1,8 +1,19 @@
-from flask import Flask, request, jsonify
-from datetime import datetime, timezone
-import pandas as pd
+"""
+This module defines the Flask application for the game design recommendation service.
+
+The application provides an API endpoint that receives player data in JSON format,
+validates the data, generates predictions using the recommender system, and returns
+the recommendations as structured JSON responses. The module handles all aspects
+of request processing, including data validation, error handling, and response formatting.
+"""
+
 import logging
 import uuid
+from datetime import datetime, timezone
+
+import pandas as pd
+from flask import Flask, jsonify, request
+
 from src.models.recommender import GameDesignRecommender
 from src.utils.utils import load_config
 
@@ -50,6 +61,21 @@ def build_response(prediction_responses):
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    """
+    Process a POST request containing player data in JSON format and return design recommendations.
+
+    The function expects a JSON payload with player data, validates the format and required fields,
+    then uses a recommender system to generate design recommendations for each player. The results are
+    returned as a JSON response structured to include the recommendations along with metadata such as
+    request ID and timestamp.
+
+    If the incoming JSON is improperly formatted or if an error occurs during processing, the function
+    responds with an appropriate error message and status code.
+
+    Returns:
+        A Flask JSON response containing either the recommendations in a structured format or
+        an error message with a corresponding HTTP status code.
+    """
     try:
         json_data = request.get_json()
         query_df = validate_json(json_data)
