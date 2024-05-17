@@ -166,7 +166,7 @@ def plot_propensity_histograms(prop_scores_df):
     plt.show()
 
 
-def plot_density_propensity_scores(prop_scores, treatment):
+def plot_density_propensity_scores(prop_scores, treatment, save_path=None):
     plt.figure(figsize=(10, 6))
     sns.kdeplot(prop_scores[treatment == 1], fill=True, color="blue", label="Design B")
     sns.kdeplot(
@@ -176,6 +176,8 @@ def plot_density_propensity_scores(prop_scores, treatment):
     plt.ylabel("Density")
     plt.legend(loc="best")
     plt.title("Density Plot of Propensity Scores")
+    if save_path:
+        plt.savefig(save_path)
     plt.show()
 
 
