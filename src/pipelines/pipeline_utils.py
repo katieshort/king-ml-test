@@ -10,7 +10,7 @@ options tailored to different modeling needs.
 from typing import Callable, List, Optional
 
 import numpy as np
-from category_encoders import TargetEncoder
+from category_encoders import TargetEncoder, WOEEncoder
 from sklearn.compose import ColumnTransformer, TransformedTargetRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
@@ -30,6 +30,7 @@ def create_model_pipeline(
     poly_features: Optional[List[str]] = None,
     scale: bool = False,
     log_transform: Optional[List[str]] = None,
+    encoding_strategy: str = "target",
 ) -> Callable:
     """Factory function to create and return a pipeline constructor function."""
 
@@ -56,9 +57,17 @@ def create_model_pipeline(
             scaler = StandardScaler()
             transformers.append(("scaler", scaler, numerical_features))
 
-        # Categorical features encoding
+        # Categorical features encoding based on the specified strategy
         if categorical_features:
-            cat_transformer = TargetEncoder(smoothing=2.0, handle_missing="value")
+            if encoding_strategy == "target":
+                cat_transformer = TargetEncoder(
+                    smoothing=2.0, handle_missing="value"
+                )
+            elif encoding_strategy == "woe":
+                cat_transformer = WOEEncoder(randomized=False)
+            else:
+                raise ValueError(f"Unknown encoding strategy: {encoding_strategy}")
+
             transformers.append(
                 ("cat_transform", cat_transformer, categorical_features)
             )

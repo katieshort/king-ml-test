@@ -108,6 +108,7 @@ class DoubleRobustLearner:
             models_config["propensity_model"].get("params", {}),
             self.config["features"][self.model_type]["categorical"],
             self.config["features"][self.model_type]["numerical"],
+            encoding_strategy="woe",  # Using WOE encoding for the propensity model
         )
 
         self.outcome_model_ctor = create_model_pipeline(
@@ -118,6 +119,7 @@ class DoubleRobustLearner:
             models_config["outcome_model"].get("transform_target", False),
             models_config["outcome_model"].get("poly_features", []),
             models_config["outcome_model"].get("log_transform", []),
+            encoding_strategy="target",  # Using Target encoding for the outcome model
         )
 
         self.final_model_ctor = create_model_pipeline(
